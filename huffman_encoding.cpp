@@ -4,7 +4,6 @@
 #include <fstream>
 #include <iostream>
 #include <optional>
-#include <queue>
 #include <unordered_map>
 #include <vector>
 using namespace std;
@@ -37,30 +36,23 @@ ostream &operator<<(ostream &out, const Node &n) {
   return out;
 }
 
-struct NodeComparator {
-  bool operator()(const Node *lhs, const Node *rhs) const {
-    return lhs->freq() > rhs->freq();
-  }
-};
-
-// for debugging
-void display_huffman_tree(Node *node, int indent = 0) {
-  if (!node)
-    return;
-  if (node->right()) {
-    display_huffman_tree(node->right(), indent + 4);
-  }
-  for (int i = 0; i < indent; i++) {
-    cout << " ";
-  }
-  cout << *node << std::endl;
-  if (node->left()) {
-    display_huffman_tree(node->left(), indent + 4);
-  }
-}
-
 class HuffManTree {
   Node *_root;
+
+  void display_huffman_tree(Node *node, int indent = 0) {
+    if (!node)
+      return;
+    if (node->right()) {
+      display_huffman_tree(node->right(), indent + 4);
+    }
+    for (int i = 0; i < indent; i++) {
+      cout << " ";
+    }
+    cout << *node << std::endl;
+    if (node->left()) {
+      display_huffman_tree(node->left(), indent + 4);
+    }
+  }
 
   void free_tree(Node *node) {
     if (!node)
@@ -75,6 +67,58 @@ public:
   Node *root() const { return this->_root; }
   void debug() { display_huffman_tree(this->_root); }
   ~HuffManTree() { free_tree(this->_root); }
+};
+
+class PriorityQueue {
+  std::vector<Node *> arr;
+
+  size_t parent(int i) const { return (i - 1) / 2; }
+  size_t left(int i) const { return (2 * i) + 1; }
+  size_t right(int i) const { return (2 * i) + 2; }
+
+  void swap(Node **a, Node **b) {
+    Node *temp = *a;
+    *a = *b;
+    *b = temp;
+  }
+
+  void heapify(int i) {
+    int smallest = i;
+    // check for smallest on left
+    if (left(i) < arr.size() && arr[left(i)]->freq() < arr[smallest]->freq()) {
+      smallest = left(i);
+    }
+    // check for smallest on right
+    if (right(i) < arr.size() &&
+        arr[right(i)]->freq() < arr[smallest]->freq()) {
+      smallest = right(i);
+    }
+
+    if (smallest != i) {
+      swap(&arr[i], &arr[smallest]);
+      heapify(smallest);
+    }
+  }
+
+public:
+  void push(Node *node) {
+    arr.push_back(node);
+    int i = arr.size() - 1; // index of newly placed element
+    while (i > 0 && arr[i]->freq() < arr[parent(i)]->freq()) {
+      swap(&arr[i], &arr[parent(i)]);
+      i = parent(i);
+    }
+  }
+
+  Node *pop() {
+    auto val = this->arr[0];
+    swap(&arr[0], &arr[arr.size() - 1]);
+    this->arr.pop_back();
+    heapify(0);
+    return val;
+  }
+
+  size_t size() const { return this->arr.size(); }
 };
 
 unordered_map<char, size_t> calaculate_char_freq(const string file_name) {
@@ -94,20 +138,17 @@ unordered_map<char, size_t> calaculate_char_freq(const string file_name) {
 
 HuffManTree construct_huffman_tree(string str) {
   unordered_map<char, size_t> freq_map = calaculate_char_freq(str);
-  priority_queue<Node *, vector<Node *>, NodeComparator> pq;
+  PriorityQueue pq;
   for (const auto i : freq_map) {
     pq.push(new Node(i.first, i.second));
   }
   while (pq.size() > 1) {
-    auto first = pq.top();
-    pq.pop();
-    auto second = pq.top();
-    pq.pop();
+    auto first = pq.pop();
+    auto second = pq.pop();
     size_t merged_freq = first->freq() + second->freq();
     pq.push(new Node(merged_freq, first, second));
   }
-  HuffManTree huffman_tree(pq.top());
-  pq.pop();
+  HuffManTree huffman_tree(pq.pop());
   return huffman_tree;
 }
 
@@ -148,7 +189,7 @@ void write_encoded_file(string encoded_string,
   size_t valid_bit_count = encoded_string.size();
   outfile.write(reinterpret_cast<char *>(&valid_bit_count),
                 sizeof(valid_bit_count));
-  uint8_t bit_buffer = 0;
+  char bit_buffer = 0;
   uint8_t bit_count = 0;
 
   for (char bit : encoded_string) {
@@ -194,7 +235,6 @@ void decode(string file_name) {
   unordered_map<string, char> codes_map;
   size_t map_size;
   char ch;
-  string code;
   binary_file.read(reinterpret_cast<char *>(&map_size), sizeof(map_size));
   while (map_size) {
     binary_file.read(reinterpret_cast<char *>(&ch), sizeof(ch));
